@@ -1,0 +1,221 @@
+services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: tapdrink-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pipeline-net
+    restart: unless-stopped
+
+  ingest-api:
+    build:
+      context: ./services/ingest-api
+      dockerfile: Dockerfile
+    container_name: tapdrink-ingest-api
+    ports:
+      - "${INGEST_API_PORT:-8000}:8000"
+    environment:
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_USER=${POSTGRES_USER:-tapdrink}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-tapdrink_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-tapdrink_telemetry}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-tapdrink}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-tapdrink_minio_secret}
+      - MINIO_BUCKET_BRONZE=${MINIO_BUCKET_BRONZE:-bronze}
+      - UVICORN_WORKERS=${INGEST_API_WORKERS:-4}
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - pipeline-net
+    restart: unless-stopped
+
+  chaos-simulator:
+    build:
+      context: ./services/chaos-simulator
+      dockerfile: Dockerfile
+    container_name: tapdrink-chaos-simulator
+    environment:
+      - INGEST_API_URL=http://ingest-api:8000
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - EVENTS_PER_SECOND=1000
+      - MALFORMED_RATIO=0.05
+    depends_on:
+      ingest-api:
+        condition: service_started
+    networks:
+      - pipeline-net
+    profiles:
+      - load-test
+
+  minio:
+    image: minio/minio:latest
+    container_name: tapdrink-minio
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-tapdrink}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-tapdrink_minio_secret}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pipeline-net
+    restart: unless-stopped
+
+  spark-master:
+    image: bitnami/spark:3.5
+    container_name: tapdrink-spark-master
+    ports:
+      - "${SPARK_MASTER_WEBUI_PORT:-8080}:8080"
+      - "${SPARK_MASTER_PORT:-7077}:7077"
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-tapdrink}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-tapdrink_minio_secret}
+      - SPARK_HADOOP_FS_S3A_ENDPOINT=http://minio:9000
+      - SPARK_HADOOP_FS_S3A_PATH_STYLE_ACCESS=true
+    volumes:
+      - ./services/spark-jobs:/opt/spark-jobs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - pipeline-net
+    restart: unless-stopped
+
+  spark-worker:
+    image: bitnami/spark:3.5
+    container_name: tapdrink-spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-2}
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-2g}
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-tapdrink}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-tapdrink_minio_secret}
+      - SPARK_HADOOP_FS_S3A_ENDPOINT=http://minio:9000
+      - SPARK_HADOOP_FS_S3A_PATH_STYLE_ACCESS=true
+    volumes:
+      - ./services/spark-jobs:/opt/spark-jobs
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    networks:
+      - pipeline-net
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: tapdrink-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-tapdrink}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-tapdrink_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-tapdrink_telemetry}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./services/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tapdrink} -d ${POSTGRES_DB:-tapdrink_telemetry}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pipeline-net
+    restart: unless-stopped
+
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    container_name: tapdrink-prefect-server
+    ports:
+      - "${PREFECT_SERVER_PORT:-4200}:4200"
+    environment:
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://${POSTGRES_USER:-tapdrink}:${POSTGRES_PASSWORD:-tapdrink_secret}@postgres:5432/prefect
+    command: prefect server start
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - pipeline-net
+    restart: unless-stopped
+
+  prefect-worker:
+    image: prefecthq/prefect:3-latest
+    container_name: tapdrink-prefect-worker
+    environment:
+      - PREFECT_API_URL=http://prefect-server:4200/api
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-tapdrink}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-tapdrink_minio_secret}
+      - MINIO_BUCKET_BRONZE=${MINIO_BUCKET_BRONZE:-bronze}
+      - MINIO_BUCKET_SILVER=${MINIO_BUCKET_SILVER:-silver}
+      - MINIO_BUCKET_GOLD=${MINIO_BUCKET_GOLD:-gold}
+    command: prefect worker start --pool default-agent-pool --type process
+    volumes:
+      - ./services/prefect-flows:/opt/prefect/flows
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+    networks:
+      - pipeline-net
+    restart: unless-stopped
+
+
+volumes:
+  redis-data:
+    driver: local
+  minio-data:
+    driver: local
+  postgres-data:
+    driver: local
+
+networks:
+  pipeline-net:
+    driver: bridge
+    name: tapdrink-pipeline
