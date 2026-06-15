@@ -1,0 +1,27 @@
+# Configuración de pre-commit
+# Para instalar:
+# 1. pip install pre-commit
+# 2. pre-commit install
+
+repos:
+  # Hooks estándar y muy rápidos para mantener limpieza básica
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace       # Borra espacios en blanco al final de las líneas
+      - id: end-of-file-fixer         # Asegura que los archivos terminen con una línea vacía
+      - id: check-yaml                # Valida que los .yaml/.yml estén bien formados (clave para docker-compose)
+      - id: check-added-large-files   # Evita comitear archivos pesados por error (> 5MB)
+        args: ['--maxkb=5000']
+      - id: detect-private-key        # Evita que subas claves privadas o secretos por accidente
+
+  # Ruff: El linter y formateador de Python escrito en Rust (extremadamente rápido)
+  # Reemplaza a Flake8, Black y isort, sin joder con reglas innecesarias
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.5
+    hooks:
+      # Linter: Encuentra errores lógicos, imports sin usar, etc. (--fix intenta arreglarlos solo)
+      - id: ruff
+        args: [ --fix ]
+      # Formatter: Formatea el código para que se vea igual siempre (estilo Black)
+      - id: ruff-format

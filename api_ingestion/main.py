@@ -1,12 +1,13 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
 from typing import Any, Dict
 
 app = FastAPI(title="TapDrink Ingest API (Dummy)")
 
+
 @app.get("/")
 def read_root():
     return {"status": "ok", "message": "Ingest API is running"}
+
 
 @app.post("/events")
 def ingest_event(payload: Dict[str, Any]):

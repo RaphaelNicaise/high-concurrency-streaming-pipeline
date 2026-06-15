@@ -3,7 +3,7 @@
 # Plataforma de Telemetría y Streaming en Tiempo Real
 
 ## El Objetivo
-Diseñar, desplegar y orquestar una arquitectura de datos end-to-end capaz de procesar telemetría en tiempo real y alta concurrencia para un ecosistema de catálogos digitales y ticketing (TapDrink). 
+Diseñar, desplegar y orquestar una arquitectura de datos end-to-end capaz de procesar telemetría en tiempo real y alta concurrencia para un ecosistema de catálogos digitales y ticketing (TapDrink).
 
 El sistema debe ser capaz de absorber picos masivos de tráfico (simulando eventos de venta de entradas), procesar métricas de negocio en vivo (vistas vs. compras) y asegurar la integridad de los datos mediante validaciones automatizadas, implementando un paradigma ELT con almacenamiento inmutable.
 
@@ -25,7 +25,7 @@ El proyecto se divide en 7 componentes interconectados, diseñados para correr e
 * **Data Quality (Calidad de Datos):** Implementación de reglas (Data Contracts/Great Expectations) para capturar y aislar *bad data* sin detener el flujo de streaming.
 * **Windowing (Agrupación por Ventanas de Tiempo):** Agrupación de micro-lotes en Spark para calcular métricas de conversión en vivo.
 * **Infraestructura como Código (IaC) y Contenerización:** Todo el ecosistema paquetizado con **Docker / Docker Compose** para replicar el entorno de producción localmente o en un VPS.
-* **DataOps y Calidad de Código:** Implementación de **Husky** para la gestión de Git Hooks automatizados, asegurando que cada commit pase por un proceso estricto de linting, formateo y validación estática de Python (PEP 8) antes de ingresar al repositorio.
+* **DataOps y Calidad de Código:** Implementación del framework **pre-commit** para la gestión de Git Hooks automatizados, asegurando que cada commit pase por un proceso ultra-rápido de linting y formateo de Python (usando Ruff) antes de ingresar al repositorio.
 
 ## Roadmap de Ejecución (Paso a paso)
 
@@ -57,7 +57,7 @@ El proyecto se divide en 7 componentes interconectados, diseñados para correr e
 - [ ] Configurar GitHub Actions.
 - [ ] Empaquetar las imágenes finales de Python/FastAPI.
 - [ ] Hacer un MakeFile (?)
-- [ ] Configurar `.husky` con un hook de `pre-commit` para automatizar el formateo y linting del código Python de forma local.
+- [X] Configurar el framework de `pre-commit` para automatizar el formateo y linting rápido (Ruff) de forma local antes de los commits.
 
 ### Fase 7: Visualización y Documentación Interactiva
 - [ ] Crear el proyecto React con Vite.

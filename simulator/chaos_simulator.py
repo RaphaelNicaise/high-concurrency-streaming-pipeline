@@ -50,6 +50,7 @@ import aiohttp
 # Logging Setup
 # -----------------------------------------------------------------------------
 
+
 def _setup_logging(level: str) -> logging.Logger:
     """Configure a structured console logger."""
     numeric_level = getattr(logging, level.upper(), logging.INFO)
@@ -71,22 +72,40 @@ def _setup_logging(level: str) -> logging.Logger:
 # Configuration
 # -----------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class Config:
     """
     All runtime configuration loaded from environment variables.
     Every field has a sensible default for local development.
     """
-    ingest_api_url: str      = field(default_factory=lambda: os.getenv("INGEST_API_URL", "http://localhost:8000"))
-    base_workers: int        = field(default_factory=lambda: int(os.getenv("BASE_WORKERS", "50")))
-    spike_multiplier: int    = field(default_factory=lambda: int(os.getenv("SPIKE_MULTIPLIER", "10")))
-    spike_duration_s: float  = field(default_factory=lambda: float(os.getenv("SPIKE_DURATION_S", "30")))
-    spike_interval_s: float  = field(default_factory=lambda: float(os.getenv("SPIKE_INTERVAL_S", "120")))
-    chaos_ratio: float       = field(default_factory=lambda: float(os.getenv("CHAOS_RATIO", "0.05")))
-    request_timeout_s: float = field(default_factory=lambda: float(os.getenv("REQUEST_TIMEOUT_S", "10")))
-    report_interval_s: float = field(default_factory=lambda: float(os.getenv("REPORT_INTERVAL_S", "5")))
-    max_retries: int         = field(default_factory=lambda: int(os.getenv("MAX_RETRIES", "3")))
-    log_level: str           = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
+
+    ingest_api_url: str = field(
+        default_factory=lambda: os.getenv("INGEST_API_URL", "http://localhost:8000")
+    )
+    base_workers: int = field(
+        default_factory=lambda: int(os.getenv("BASE_WORKERS", "50"))
+    )
+    spike_multiplier: int = field(
+        default_factory=lambda: int(os.getenv("SPIKE_MULTIPLIER", "10"))
+    )
+    spike_duration_s: float = field(
+        default_factory=lambda: float(os.getenv("SPIKE_DURATION_S", "30"))
+    )
+    spike_interval_s: float = field(
+        default_factory=lambda: float(os.getenv("SPIKE_INTERVAL_S", "120"))
+    )
+    chaos_ratio: float = field(
+        default_factory=lambda: float(os.getenv("CHAOS_RATIO", "0.05"))
+    )
+    request_timeout_s: float = field(
+        default_factory=lambda: float(os.getenv("REQUEST_TIMEOUT_S", "10"))
+    )
+    report_interval_s: float = field(
+        default_factory=lambda: float(os.getenv("REPORT_INTERVAL_S", "5"))
+    )
+    max_retries: int = field(default_factory=lambda: int(os.getenv("MAX_RETRIES", "3")))
+    log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 
     @property
     def ingest_endpoint(self) -> str:
@@ -101,27 +120,28 @@ class Config:
 # User State Machine
 # -----------------------------------------------------------------------------
 
+
 class UserState(Enum):
-    BROWSING_CATALOG   = auto()
-    VIEWING_PRODUCT    = auto()
-    ADDING_TO_CART     = auto()
+    BROWSING_CATALOG = auto()
+    VIEWING_PRODUCT = auto()
+    ADDING_TO_CART = auto()
     CHECKOUT_INITIATED = auto()
-    CHECKOUT_SUCCESS   = auto()
+    CHECKOUT_SUCCESS = auto()
     CHECKOUT_ABANDONED = auto()
 
 
 # Allowed state transitions: state -> list of (next_state, weight)
 _TRANSITIONS: dict[UserState, list[tuple[UserState, float]]] = {
-    UserState.BROWSING_CATALOG:   [
+    UserState.BROWSING_CATALOG: [
         (UserState.VIEWING_PRODUCT, 0.70),
         (UserState.BROWSING_CATALOG, 0.30),
     ],
-    UserState.VIEWING_PRODUCT:    [
+    UserState.VIEWING_PRODUCT: [
         (UserState.ADDING_TO_CART, 0.50),
         (UserState.BROWSING_CATALOG, 0.40),
         (UserState.CHECKOUT_ABANDONED, 0.10),
     ],
-    UserState.ADDING_TO_CART:     [
+    UserState.ADDING_TO_CART: [
         (UserState.CHECKOUT_INITIATED, 0.65),
         (UserState.BROWSING_CATALOG, 0.25),
         (UserState.CHECKOUT_ABANDONED, 0.10),
@@ -131,41 +151,44 @@ _TRANSITIONS: dict[UserState, list[tuple[UserState, float]]] = {
         (UserState.CHECKOUT_ABANDONED, 0.30),
     ],
     # Terminal states loop back to a fresh session
-    UserState.CHECKOUT_SUCCESS:   [(UserState.BROWSING_CATALOG, 1.0)],
+    UserState.CHECKOUT_SUCCESS: [(UserState.BROWSING_CATALOG, 1.0)],
     UserState.CHECKOUT_ABANDONED: [(UserState.BROWSING_CATALOG, 1.0)],
 }
 
 # Map state -> event_type string sent in the payload
 _STATE_EVENT_MAP: dict[UserState, str] = {
-    UserState.BROWSING_CATALOG:   "catalog_view",
-    UserState.VIEWING_PRODUCT:    "product_view",
-    UserState.ADDING_TO_CART:     "add_to_cart",
+    UserState.BROWSING_CATALOG: "catalog_view",
+    UserState.VIEWING_PRODUCT: "product_view",
+    UserState.ADDING_TO_CART: "add_to_cart",
     UserState.CHECKOUT_INITIATED: "checkout_initiated",
-    UserState.CHECKOUT_SUCCESS:   "purchase_completed",
+    UserState.CHECKOUT_SUCCESS: "purchase_completed",
     UserState.CHECKOUT_ABANDONED: "checkout_abandoned",
 }
 
 # Realistic catalogue: (product_id, category, price)
 _PRODUCTS: list[tuple[str, str, float]] = [
-    ("prod-001", "vip-ticket",     250.00),
-    ("prod-002", "general-ticket",  80.00),
-    ("prod-003", "combo-vip",      320.00),
+    ("prod-001", "vip-ticket", 250.00),
+    ("prod-002", "general-ticket", 80.00),
+    ("prod-003", "combo-vip", 320.00),
     ("prod-004", "backstage-pass", 500.00),
-    ("prod-005", "early-bird",      55.00),
-    ("prod-006", "drink-combo",     35.00),
-    ("prod-007", "merch-tshirt",    45.00),
-    ("prod-008", "fast-lane",       90.00),
+    ("prod-005", "early-bird", 55.00),
+    ("prod-006", "drink-combo", 35.00),
+    ("prod-007", "merch-tshirt", 45.00),
+    ("prod-008", "fast-lane", 90.00),
 ]
 
 _DEVICE_TYPES: list[str] = [
-    "mobile_ios", "mobile_android", "desktop_chrome",
-    "desktop_firefox", "tablet_ios", "desktop_safari",
+    "mobile_ios",
+    "mobile_android",
+    "desktop_chrome",
+    "desktop_firefox",
+    "tablet_ios",
+    "desktop_safari",
 ]
 
 # Pre-generate a pool of realistic-looking IPs for diversity
 _IP_POOLS: list[str] = [
-    f"192.168.{random.randint(0, 255)}.{random.randint(1, 254)}"
-    for _ in range(500)
+    f"192.168.{random.randint(0, 255)}.{random.randint(1, 254)}" for _ in range(500)
 ]
 
 
@@ -182,10 +205,11 @@ class SimulatedUser:
     Maintains its own session, device fingerprint, and current state.
     Advances through a realistic e-commerce journey via a state machine.
     """
-    user_id: str     = field(default_factory=lambda: f"usr-{uuid.uuid4().hex[:12]}")
-    session_id: str  = field(default_factory=lambda: f"sess-{uuid.uuid4().hex}")
+
+    user_id: str = field(default_factory=lambda: f"usr-{uuid.uuid4().hex[:12]}")
+    session_id: str = field(default_factory=lambda: f"sess-{uuid.uuid4().hex}")
     device_type: str = field(default_factory=lambda: random.choice(_DEVICE_TYPES))
-    ip_address: str  = field(default_factory=lambda: random.choice(_IP_POOLS))
+    ip_address: str = field(default_factory=lambda: random.choice(_IP_POOLS))
     state: UserState = field(default=UserState.BROWSING_CATALOG)
     _product: tuple[str, str, float] = field(
         default_factory=lambda: random.choice(_PRODUCTS),
@@ -207,20 +231,22 @@ class SimulatedUser:
         """
         product_id, category, price = self._product
         return {
-            "event_id":    str(uuid.uuid4()),
-            "user_id":     self.user_id,
-            "session_id":  self.session_id,
-            "event_type":  _STATE_EVENT_MAP[self.state],
-            "product_id":  product_id,
-            "category":    category,
-            "price":       round(price * random.uniform(0.95, 1.05), 2),
-            "quantity":    random.randint(1, 4),
+            "event_id": str(uuid.uuid4()),
+            "user_id": self.user_id,
+            "session_id": self.session_id,
+            "event_type": _STATE_EVENT_MAP[self.state],
+            "product_id": product_id,
+            "category": category,
+            "price": round(price * random.uniform(0.95, 1.05), 2),
+            "quantity": random.randint(1, 4),
             "device_type": self.device_type,
-            "ip_address":  self.ip_address,
-            "timestamp":   datetime.now(tz=timezone.utc).isoformat(),
+            "ip_address": self.ip_address,
+            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             "metadata": {
-                "referrer":    random.choice(["google", "instagram", "direct", "email_campaign"]),
-                "locale":      random.choice(["es-AR", "es-MX", "pt-BR", "en-US"]),
+                "referrer": random.choice(
+                    ["google", "instagram", "direct", "email_campaign"]
+                ),
+                "locale": random.choice(["es-AR", "es-MX", "pt-BR", "en-US"]),
                 "app_version": f"2.{random.randint(0, 9)}.{random.randint(0, 20)}",
             },
         }
@@ -229,6 +255,7 @@ class SimulatedUser:
 # -----------------------------------------------------------------------------
 # Chaos Injector
 # -----------------------------------------------------------------------------
+
 
 class ChaosInjector:
     """
@@ -315,17 +342,19 @@ class ChaosInjector:
 # Metrics Collector
 # -----------------------------------------------------------------------------
 
+
 @dataclass
 class MetricsCollector:
     """
     Asyncio-safe event counters.
     All increments happen in the single event loop thread, so no locks needed.
     """
-    sent: int       = 0
-    success: int    = 0
-    errors: int     = 0
+
+    sent: int = 0
+    success: int = 0
+    errors: int = 0
     chaos_sent: int = 0
-    _start: float   = field(default_factory=time.monotonic)
+    _start: float = field(default_factory=time.monotonic)
 
     def record_success(self, *, is_chaos: bool = False) -> None:
         self.sent += 1
@@ -363,6 +392,7 @@ class MetricsCollector:
 # HTTP Event Sender
 # -----------------------------------------------------------------------------
 
+
 class EventSender:
     """
     Handles low-level HTTP dispatch with retry + exponential backoff.
@@ -377,11 +407,11 @@ class EventSender:
         max_retries: int,
         logger: logging.Logger,
     ) -> None:
-        self._session    = session
-        self._endpoint   = endpoint
-        self._timeout    = aiohttp.ClientTimeout(total=timeout_s)
+        self._session = session
+        self._endpoint = endpoint
+        self._timeout = aiohttp.ClientTimeout(total=timeout_s)
         self._max_retries = max_retries
-        self._log        = logger.getChild("sender")
+        self._log = logger.getChild("sender")
 
     async def send(
         self,
@@ -413,7 +443,10 @@ class EventSender:
                         metrics.record_success(is_chaos=is_chaos)
                         return
                     self._log.warning(
-                        "5xx (%d) on attempt %d/%d", resp.status, attempt, self._max_retries
+                        "5xx (%d) on attempt %d/%d",
+                        resp.status,
+                        attempt,
+                        self._max_retries,
                     )
 
             except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as exc:
@@ -430,6 +463,7 @@ class EventSender:
 # -----------------------------------------------------------------------------
 # Virtual User Worker Coroutine
 # -----------------------------------------------------------------------------
+
 
 async def run_user_worker(
     user: SimulatedUser,
@@ -463,6 +497,7 @@ async def run_user_worker(
 # Traffic Controller (Spike Engine)
 # -----------------------------------------------------------------------------
 
+
 class TrafficController:
     """
     Manages the pool of active SimulatedUser coroutines.
@@ -481,12 +516,12 @@ class TrafficController:
         stop_event: asyncio.Event,
         logger: logging.Logger,
     ) -> None:
-        self._cfg       = config
-        self._sender    = sender
-        self._chaos     = chaos
-        self._metrics   = metrics
-        self._stop      = stop_event
-        self._log       = logger.getChild("traffic")
+        self._cfg = config
+        self._sender = sender
+        self._chaos = chaos
+        self._metrics = metrics
+        self._stop = stop_event
+        self._log = logger.getChild("traffic")
         self._tasks: list[asyncio.Task[None]] = []
 
     # ------------------------------------------------------------------
@@ -497,8 +532,14 @@ class TrafficController:
         for _ in range(count):
             user = SimulatedUser()
             task = asyncio.create_task(
-                run_user_worker(user, self._sender, self._chaos,
-                                self._metrics, self._stop, think_range),
+                run_user_worker(
+                    user,
+                    self._sender,
+                    self._chaos,
+                    self._metrics,
+                    self._stop,
+                    think_range,
+                ),
                 name=f"user-{user.user_id}",
             )
             self._tasks.append(task)
@@ -522,7 +563,9 @@ class TrafficController:
         """
         self._log.info(
             "Starting baseline traffic | workers=%d | think=[%.2f, %.2f]s",
-            self._cfg.base_workers, 0.1, 0.4,
+            self._cfg.base_workers,
+            0.1,
+            0.4,
         )
         self._spawn(self._cfg.base_workers, think_range=(0.1, 0.4))
 
@@ -550,9 +593,13 @@ class TrafficController:
         extra = self._cfg.spike_workers - self._cfg.base_workers
         self._log.warning(
             "FLASH SALE SPIKE | %d -> %d workers | duration=%.0fs",
-            self._cfg.base_workers, self._cfg.spike_workers, self._cfg.spike_duration_s,
+            self._cfg.base_workers,
+            self._cfg.spike_workers,
+            self._cfg.spike_duration_s,
         )
-        self._spawn(extra, think_range=(0.005, 0.05))  # near-zero think time = max pressure
+        self._spawn(
+            extra, think_range=(0.005, 0.05)
+        )  # near-zero think time = max pressure
 
         try:
             await asyncio.wait_for(
@@ -584,6 +631,7 @@ class TrafficController:
 # Live Metrics Reporter
 # -----------------------------------------------------------------------------
 
+
 async def run_metrics_reporter(
     metrics: MetricsCollector,
     interval_s: float,
@@ -601,6 +649,7 @@ async def run_metrics_reporter(
 # Entrypoint
 # -----------------------------------------------------------------------------
 
+
 async def main() -> None:
     config = Config()
     logger = _setup_logging(config.log_level)
@@ -610,18 +659,25 @@ async def main() -> None:
     logger.info("=" * 68)
     logger.info("  Target endpoint   : %s", config.ingest_endpoint)
     logger.info("  Base workers      : %d", config.base_workers)
-    logger.info("  Spike workers     : %d  (%dx multiplier)",
-                config.spike_workers, config.spike_multiplier)
-    logger.info("  Spike schedule    : %.0fs duration every %.0fs",
-                config.spike_duration_s, config.spike_interval_s)
+    logger.info(
+        "  Spike workers     : %d  (%dx multiplier)",
+        config.spike_workers,
+        config.spike_multiplier,
+    )
+    logger.info(
+        "  Spike schedule    : %.0fs duration every %.0fs",
+        config.spike_duration_s,
+        config.spike_interval_s,
+    )
     logger.info("  Chaos ratio       : %.0f%%", config.chaos_ratio * 100)
-    logger.info("  Timeout / retries : %.1fs / %d",
-                config.request_timeout_s, config.max_retries)
+    logger.info(
+        "  Timeout / retries : %.1fs / %d", config.request_timeout_s, config.max_retries
+    )
     logger.info("=" * 68)
 
     stop_event = asyncio.Event()
-    metrics    = MetricsCollector()
-    chaos      = ChaosInjector(config.chaos_ratio, logger)
+    metrics = MetricsCollector()
+    chaos = ChaosInjector(config.chaos_ratio, logger)
 
     # One shared TCP connection pool across ALL workers for efficiency
     connector = aiohttp.TCPConnector(
@@ -632,19 +688,19 @@ async def main() -> None:
 
     async with aiohttp.ClientSession(connector=connector) as session:
         sender = EventSender(
-            session     = session,
-            endpoint    = config.ingest_endpoint,
-            timeout_s   = config.request_timeout_s,
-            max_retries = config.max_retries,
-            logger      = logger,
+            session=session,
+            endpoint=config.ingest_endpoint,
+            timeout_s=config.request_timeout_s,
+            max_retries=config.max_retries,
+            logger=logger,
         )
         controller = TrafficController(
-            config    = config,
-            sender    = sender,
-            chaos     = chaos,
-            metrics   = metrics,
-            stop_event= stop_event,
-            logger    = logger,
+            config=config,
+            sender=sender,
+            chaos=chaos,
+            metrics=metrics,
+            stop_event=stop_event,
+            logger=logger,
         )
         reporter = asyncio.create_task(
             run_metrics_reporter(metrics, config.report_interval_s, stop_event, logger),
