@@ -1,0 +1,6 @@
+aiohttp==3.9.5          # Async HTTP client/server
+aiosignal==1.3.1        # Signal handling (aiohttp dependency)
+attrs==23.2.0           # Dataclass helpers (aiohttp dependency)
+frozenlist==1.4.1       # Immutable list (aiohttp dependency)
+multidict==6.0.5        # Multi-value dict (aiohttp dependency)
+yarl==1.9.4             # URL manipulation (aiohttp dependency)

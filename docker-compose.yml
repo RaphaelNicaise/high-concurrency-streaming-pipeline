@@ -52,7 +52,7 @@ services:
 
   chaos-simulator:
     build:
-      context: ./services/chaos-simulator
+      context: ./simulator/chaos-simulator
       dockerfile: Dockerfile
     container_name: tapdrink-chaos-simulator
     environment:
