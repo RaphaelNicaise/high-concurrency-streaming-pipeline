@@ -1,26 +1,27 @@
 # high-concurrency-streaming-pipeline
 
-# Plataforma de Telemetría y Streaming en Tiempo Real
+# Plataforma de Telemetría, Streaming y Control de Caos en Tiempo Real
 
 ## El Objetivo
 Diseñar, desplegar y orquestar una arquitectura de datos end-to-end capaz de procesar telemetría en tiempo real y alta concurrencia para un ecosistema de catálogos digitales y ticketing (TapDrink).
 
-El sistema debe ser capaz de absorber picos masivos de tráfico (simulando eventos de venta de entradas), procesar métricas de negocio en vivo (vistas vs. compras) y asegurar la integridad de los datos mediante validaciones automatizadas, implementando un paradigma ELT con almacenamiento inmutable.
+El sistema cuenta con un panel de control interactivo (UI) para monitorear la salud de la plataforma, visualizar métricas agregadas y controlar los picos de estrés del simulador de forma eficiente, implementando un enfoque pragmático de observabilidad y un paradigma ELT robusto.
 
 ## La Arquitectura (Qué vamos a hacer)
-El proyecto se divide en 7 componentes interconectados, diseñados para correr en contenedores de forma aislada:
+El proyecto se divide en 7 componentes interconectados, diseñados para correr en contenedores de forma aislada mediante Docker Compose:
 
 1.  **Generador de Carga (Chaos Simulator):** Un script en Python que inyecta miles de eventos por segundo (JSONs) simulando navegación de usuarios, carritos abandonados, compras de tickets y eventos malformados para estresar el sistema.
-2.  **Capa de Ingesta y Rate Limiting:** Una API (FastAPI) que recibe el tráfico y utiliza **Redis** (Pub/Sub o Streams) como un buffer/amortiguador para evitar que la base de datos colapse durante los picos de tráfico.
-3.  **Data Lake y Almacenamiento Crudo (Landing / Bronze):** Despliegue de **MinIO** (almacenamiento de objetos compatible con AWS S3) para guardar los eventos JSON originales de forma inmutable, protegiendo los datos frente a fallos de procesamiento.
-4.  **Procesamiento de Streaming (Hot Path):** Un clúster de **Apache Spark (PySpark)** estructurado para consumir la cola de Redis, agregar métricas en ventanas de 5 segundos, filtrar el fraude y separar los datos corruptos.
-5.  **Almacenamiento Indexado:** **PostgreSQL** configurado con particionamiento lógico para recibir los datos procesados en tiempo real y servir dashboards de analítica.
-6.  **Orquestación y Batch (Cold Path):** **Prefect / Apache Airflow** orquestando tareas nocturnas programadas que toman el histórico crudo de MinIO, lo validan, lo transforman a formato Parquet (Silver) y compactan las tablas finales (Gold).
-7.  **Dashboard Interactivo de Arquitectura (React / Vite):** Un contenedor Node.js que sirve una aplicación frontend puramente explicativa y visual (no conectada en vivo). Su objetivo es mostrar de forma didáctica el flujo completo de datos, los parámetros de cada servicio y el problema arquitectónico que resuelve cada capa.
+2.  **Capa de Ingesta y API Gateway:** Una API (**FastAPI**) que actúa como el puente central de la plataforma. Recibe la telemetría del simulador, expone endpoints HTTP optimizados para el frontend y gestiona los comandos de control del sistema modificando flags en Redis.
+3.  **Amortiguador de Ingesta (Buffer):** Uso de **Redis** (Streams/Pub-Sub) para absorber picos masivos de tráfico (simulando eventos de venta de entradas) y actuar como almacenamiento en caché de métricas calientes de corto plazo.
+4.  **Data Lake y Almacenamiento Crudo (Landing / Bronze):** Despliegue de **MinIO** (almacenamiento de objetos compatible con AWS S3) para guardar los eventos JSON originales de forma inmutable, protegiendo los datos frente a fallos de procesamiento.
+5.  **Procesamiento de Streaming (Hot Path):** Un clúster de **Apache Spark (PySpark)** estructurado para consumir la cola de Redis, agregar métricas en ventanas de 5 segundos, filtrar el fraude y actualizar los contadores en tiempo real dentro de Redis/PostgreSQL.
+6.  **Almacenamiento Indexado:** **PostgreSQL** configurado con particionamiento lógico para recibir la data procesada en tiempo real y servir como persistencia analítica de negocio.
+7.  **Dashboard Interactivo y Panel de Control (React / Vite):** Una aplicación frontend desarrollada en React que consume métricas agregadas desde la API mediante **Polling de alta frecuencia (Short Polling)** a intervalos de 2 segundos. Renderiza el estado del flujo utilizando **React Flow** y ofrece controles directos (botones de encendido/apagado/estrés) que impactan en el comportamiento del Chaos Simulator a través de peticiones HTTP estándar (`POST`).
 
 ## Conceptos Core Trabajados
 * **Desacoplamiento de Arquitectura:** Uso de Redis como capa de mensajería para separar la ingesta del procesamiento.
 * **Paradigma ELT y Arquitectura de Medallón:** Almacenamiento inmutable de la fuente original (Capa Bronze), transformación a formatos columnares eficientes (Capa Silver) y consolidación de métricas de negocio (Capa Gold).
+* **Observabilidad Pragmática y Control de Sistemas:** Consumo eficiente de métricas pre-agregadas en memoria (Redis) mediante peticiones HTTP asíncronas tradicionales, minimizando la sobrecarga de conexiones abiertas y simplificando el estado del cliente.
 * **Idempotencia y Reprocesamiento (Backfilling):** Garantizar que fallas en los nodos no generen duplicados y permitir la reconstrucción del historial completo de PostgreSQL leyendo desde el Data Lake.
 * **Data Quality (Calidad de Datos):** Implementación de reglas (Data Contracts/Great Expectations) para capturar y aislar *bad data* sin detener el flujo de streaming.
 * **Windowing (Agrupación por Ventanas de Tiempo):** Agrupación de micro-lotes en Spark para calcular métricas de conversión en vivo.
@@ -30,9 +31,9 @@ El proyecto se divide en 7 componentes interconectados, diseñados para correr e
 ## Roadmap de Ejecución (Paso a paso)
 
 ### Fase 1: Simulación e Ingesta
-- [X ] Desarrollar el script generador de telemetría (faker/Python).
+- [X] Desarrollar el script generador de telemetría (faker/Python).
 - [X] Levantar contenedor de Redis.
-- [ ] Crear el endpoint de FastAPI que empuja los eventos a la cola de Redis.
+- [ ] Crear el endpoint de FastAPI que empuja los eventos a la cola de Redis y acepta comandos de control.
 
 ### Fase 2: Data Lake Crudo (Paradigma ELT)
 - [X] Levantar contenedor de MinIO.
@@ -56,10 +57,12 @@ El proyecto se divide en 7 componentes interconectados, diseñados para correr e
 ### Fase 6: CI/CD y Despliegue
 - [ ] Configurar GitHub Actions.
 - [ ] Empaquetar las imágenes finales de Python/FastAPI.
-- [ ] Hacer un MakeFile (?)
+- [ ] Diseñar un `Makefile` para automatizar la inicialización local del ecosistema (`make up`, `make down`, `make test`).
 - [X] Configurar el framework de `pre-commit` para automatizar el formateo y linting rápido (Ruff) de forma local antes de los commits.
 
-### Fase 7: Visualización y Documentación Interactiva
+### Fase 7: Visualización y Panel de Control Pragmático
 - [ ] Crear el proyecto React con Vite.
-- [ ] Desarrollar la interfaz explicativa simulando el pipeline de datos.
-- [ ] Dockerizar el frontend con Node y agregarlo al `docker-compose.yml`.
+- [ ] Diseñar un componente con **React Flow** para renderizar estáticamente la arquitectura de bloques del pipeline.
+- [ ] Configurar llamadas HTTP repetitivas (`setInterval` / Short Polling) cada 2 segundos a los endpoints de FastAPI para actualizar gráficos de throughput y latencia con datos calientes de Redis.
+- [ ] Implementar botones de control (Toggle) que realicen peticiones `POST` tradicionales para alterar las variables del `chaos-simulator` (encendido, apagado, modo ráfaga).
+- [ ] Dockerizar el frontend y agregarlo al `docker-compose.yml`.
