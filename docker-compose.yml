@@ -23,7 +23,7 @@ services:
 
   ingest-api:
     build:
-      context: ./services/ingest-api
+      context: ./api_ingestion
       dockerfile: Dockerfile
     container_name: tapdrink-ingest-api
     ports:
@@ -52,7 +52,7 @@ services:
 
   chaos-simulator:
     build:
-      context: ./simulator/chaos-simulator
+      context: ./simulator
       dockerfile: Dockerfile
     container_name: tapdrink-chaos-simulator
     environment:
@@ -91,24 +91,20 @@ services:
     restart: unless-stopped
 
   spark-master:
-    image: bitnami/spark:3.5
+    image: apache/spark:3.5.1
     container_name: tapdrink-spark-master
+    user: root
     ports:
       - "${SPARK_MASTER_WEBUI_PORT:-8080}:8080"
       - "${SPARK_MASTER_PORT:-7077}:7077"
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master
     environment:
-      - SPARK_MODE=master
-      - SPARK_MASTER_HOST=spark-master
-      - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-      - SPARK_SSL_ENABLED=no
       - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-tapdrink}
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-tapdrink_minio_secret}
       - SPARK_HADOOP_FS_S3A_ENDPOINT=http://minio:9000
       - SPARK_HADOOP_FS_S3A_PATH_STYLE_ACCESS=true
     volumes:
-      - ./services/spark-jobs:/opt/spark-jobs
+      - ./spark_streaming:/opt/spark-jobs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080"]
       interval: 15s
@@ -119,23 +115,17 @@ services:
     restart: unless-stopped
 
   spark-worker:
-    image: bitnami/spark:3.5
+    image: apache/spark:3.5.1
     container_name: tapdrink-spark-worker
+    user: root
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077 -c ${SPARK_WORKER_CORES:-2} -m ${SPARK_WORKER_MEMORY:-2g}
     environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-2}
-      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-2g}
-      - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-      - SPARK_SSL_ENABLED=no
       - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-tapdrink}
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-tapdrink_minio_secret}
       - SPARK_HADOOP_FS_S3A_ENDPOINT=http://minio:9000
       - SPARK_HADOOP_FS_S3A_PATH_STYLE_ACCESS=true
     volumes:
-      - ./services/spark-jobs:/opt/spark-jobs
+      - ./spark_streaming:/opt/spark-jobs
     depends_on:
       spark-master:
         condition: service_healthy
@@ -154,7 +144,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-tapdrink_telemetry}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./services/postgres/init:/docker-entrypoint-initdb.d
+      - ./postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tapdrink} -d ${POSTGRES_DB:-tapdrink_telemetry}"]
       interval: 10s
@@ -198,7 +188,7 @@ services:
       - MINIO_BUCKET_GOLD=${MINIO_BUCKET_GOLD:-gold}
     command: prefect worker start --pool default-agent-pool --type process
     volumes:
-      - ./services/prefect-flows:/opt/prefect/flows
+      - ./orchestation:/opt/prefect/flows
     depends_on:
       prefect-server:
         condition: service_healthy

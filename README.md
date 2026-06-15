@@ -8,7 +8,7 @@ Diseñar, desplegar y orquestar una arquitectura de datos end-to-end capaz de pr
 El sistema debe ser capaz de absorber picos masivos de tráfico (simulando eventos de venta de entradas), procesar métricas de negocio en vivo (vistas vs. compras) y asegurar la integridad de los datos mediante validaciones automatizadas, implementando un paradigma ELT con almacenamiento inmutable.
 
 ## La Arquitectura (Qué vamos a hacer)
-El proyecto se divide en 6 componentes interconectados, diseñados para correr en contenedores de forma aislada:
+El proyecto se divide en 7 componentes interconectados, diseñados para correr en contenedores de forma aislada:
 
 1.  **Generador de Carga (Chaos Simulator):** Un script en Python que inyecta miles de eventos por segundo (JSONs) simulando navegación de usuarios, carritos abandonados, compras de tickets y eventos malformados para estresar el sistema.
 2.  **Capa de Ingesta y Rate Limiting:** Una API (FastAPI) que recibe el tráfico y utiliza **Redis** (Pub/Sub o Streams) como un buffer/amortiguador para evitar que la base de datos colapse durante los picos de tráfico.
@@ -16,6 +16,7 @@ El proyecto se divide en 6 componentes interconectados, diseñados para correr e
 4.  **Procesamiento de Streaming (Hot Path):** Un clúster de **Apache Spark (PySpark)** estructurado para consumir la cola de Redis, agregar métricas en ventanas de 5 segundos, filtrar el fraude y separar los datos corruptos.
 5.  **Almacenamiento Indexado:** **PostgreSQL** configurado con particionamiento lógico para recibir los datos procesados en tiempo real y servir dashboards de analítica.
 6.  **Orquestación y Batch (Cold Path):** **Prefect / Apache Airflow** orquestando tareas nocturnas programadas que toman el histórico crudo de MinIO, lo validan, lo transforman a formato Parquet (Silver) y compactan las tablas finales (Gold).
+7.  **Dashboard Interactivo de Arquitectura (React / Vite):** Un contenedor Node.js que sirve una aplicación frontend puramente explicativa y visual (no conectada en vivo). Su objetivo es mostrar de forma didáctica el flujo completo de datos, los parámetros de cada servicio y el problema arquitectónico que resuelve cada capa.
 
 ## Conceptos Core Trabajados
 * **Desacoplamiento de Arquitectura:** Uso de Redis como capa de mensajería para separar la ingesta del procesamiento.
@@ -29,12 +30,12 @@ El proyecto se divide en 6 componentes interconectados, diseñados para correr e
 ## Roadmap de Ejecución (Paso a paso)
 
 ### Fase 1: Simulación e Ingesta
-- [ ] Desarrollar el script generador de telemetría (faker/Python).
-- [ ] Levantar contenedor de Redis.
+- [X ] Desarrollar el script generador de telemetría (faker/Python).
+- [X] Levantar contenedor de Redis.
 - [ ] Crear el endpoint de FastAPI que empuja los eventos a la cola de Redis.
 
 ### Fase 2: Data Lake Crudo (Paradigma ELT)
-- [ ] Levantar contenedor de MinIO.
+- [X] Levantar contenedor de MinIO.
 - [ ] Implementar un proceso (consumer) que lea eventos crudos de Redis y los persista inmutables en un bucket `bronze` de MinIO.
 
 ### Fase 3: Procesamiento en Tiempo Real
@@ -43,12 +44,12 @@ El proyecto se divide en 6 componentes interconectados, diseñados para correr e
 - [ ] Implementar la lógica de limpieza y agregación de ventanas temporales.
 
 ### Fase 4: Almacenamiento y Modelo Analítico
-- [ ] Levantar contenedor de PostgreSQL.
+- [X] Levantar contenedor de PostgreSQL.
 - [ ] Diseñar el esquema de tablas (Modelo de Estrella o Tablas Anchas indexadas).
 - [ ] Conectar la salida de Spark para escribir en las tablas correspondientes.
 
 ### Fase 5: Orquestación y Resiliencia
-- [ ] Integrar Prefect / Airflow mediante Docker.
+- [ ] Integrar Prefect mediante Docker.
 - [ ] Crear el DAG nocturno que tome los datos de la capa `bronze` en MinIO, los convierta a Parquet (`silver`) y actualice las métricas consolidadas.
 - [ ] Implementar lógica de reintentos (*retries*) frente a caídas de infraestructura.
 
@@ -58,3 +59,7 @@ El proyecto se divide en 6 componentes interconectados, diseñados para correr e
 - [ ] Hacer un MakeFile (?)
 - [ ] Configurar `.husky` con un hook de `pre-commit` para automatizar el formateo y linting del código Python de forma local.
 
+### Fase 7: Visualización y Documentación Interactiva
+- [ ] Crear el proyecto React con Vite.
+- [ ] Desarrollar la interfaz explicativa simulando el pipeline de datos.
+- [ ] Dockerizar el frontend con Node y agregarlo al `docker-compose.yml`.
