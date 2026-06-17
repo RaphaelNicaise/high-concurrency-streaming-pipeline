@@ -48,4 +48,4 @@ ENV INGEST_API_URL="http://ingest-api:8000" \
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-CMD ["python", "-u", "chaos_simulator.py"]
+CMD ["python", "-u", "main.py"]

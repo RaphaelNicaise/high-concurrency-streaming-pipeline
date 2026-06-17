@@ -16,8 +16,9 @@ El proyecto se divide en 7 componentes interconectados, diseñados para correr e
 4.  **Data Lake y Almacenamiento Crudo (Landing / Bronze):** Despliegue de **MinIO** (almacenamiento de objetos compatible con AWS S3) para guardar los eventos JSON originales de forma inmutable, protegiendo los datos frente a fallos de procesamiento.
 5.  **Procesamiento de Streaming (Hot Path):** Un clúster de **Apache Spark (PySpark)** estructurado para consumir la cola de Redis, agregar métricas en ventanas de 5 segundos, filtrar el fraude y actualizar los contadores en tiempo real dentro de Redis/PostgreSQL.
 6.  **Almacenamiento Indexado:** **PostgreSQL** configurado con particionamiento lógico para recibir la data procesada en tiempo real y servir como persistencia analítica de negocio.
-7.  **Dashboard Interactivo y Panel de Control (React / Vite):** Una aplicación frontend desarrollada en React que consume métricas agregadas desde la API mediante **Polling de alta frecuencia (Short Polling)** a intervalos de 2 segundos. Renderiza el estado del flujo utilizando **React Flow** y ofrece controles directos (botones de encendido/apagado/estrés) que impactan en el comportamiento del Chaos Simulator a través de peticiones HTTP estándar (`POST`).
-El boton lo quiero hacer con Radix: Switch
+7.  **Gestión de Contenedores y Logs:** Integración de **Portainer** para tener un panel web unificado que facilita ver el estado de salud y los logs en tiempo real de todos los contenedores en producción.
+8.  **Dashboard Interactivo y Panel de Control (React / Vite):** Una aplicación frontend desarrollada en React que consume métricas agregadas desde la API mediante **Polling de alta frecuencia (Short Polling)** a intervalos de 2 segundos. Renderiza el estado del flujo utilizando **React Flow** y ofrece controles directos (botones de encendido/apagado/estrés) que impactan en el comportamiento del Chaos Simulator a través de peticiones HTTP estándar (`POST`).
+El boton lo quiero hacer con Radix: Switch, tambien deberia haber botones para entrar a los servicios de Spark, MinIO y PostgreSQL, para poder ver logs y métricas de cada uno de ellos.
 
 ### Diagrama de Flujo
 
@@ -90,14 +91,15 @@ flowchart TD
 - [X] Levantar contenedor de Redis.
 - [X] Crear el endpoint de FastAPI que empuja los eventos a la cola de Redis y acepta comandos de control.
 
-### Fase 2: Data Lake Crudo (Paradigma ELT)
+### Fase 2: Data Lake Crudo (Paradigma ELT) y Gestión
 - [X] Levantar contenedor de MinIO.
-- [ ] Implementar un proceso (consumer) que lea eventos crudos de Redis y los persista inmutables en un bucket `bronze` de MinIO.
+- [X] Implementar un proceso (consumer) que lea eventos crudos de Redis y los persista inmutables en un bucket `bronze` de MinIO.
+- [X] Agregar Portainer al stack para facilitar el acceso a logs y la gestión visual de contenedores en producción.
 
 ### Fase 3: Procesamiento en Tiempo Real
-- [ ] Configurar el contenedor de Apache Spark.
-- [ ] Escribir el job de PySpark que lea los streams en caliente.
-- [ ] Implementar la lógica de limpieza y agregación de ventanas temporales.
+- [X] Configurar el contenedor de Apache Spark.
+- [X] Escribir el job de PySpark que lea los streams en caliente.
+- [X] Implementar la lógica de limpieza y agregación de ventanas temporales.
 
 ### Fase 4: Almacenamiento y Modelo Analítico
 - [X] Levantar contenedor de PostgreSQL.

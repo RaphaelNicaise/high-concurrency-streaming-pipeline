@@ -38,8 +38,8 @@ El Chaos Simulator está bajo un profile separado para no arrancar por defecto:
 docker compose --profile load-test up -d chaos-simulator
 ```
 
-```bash
-docker compose --profile load-test up -d chaos-simulator
+```bash parar el test de carga
+docker compose --profile load-test down chaos-simulator
 ```
 
 para borrar toda la información persistente (volúmenes) y empezar de cero:

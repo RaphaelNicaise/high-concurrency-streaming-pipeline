@@ -90,6 +90,30 @@ services:
       - pipeline-net
     restart: unless-stopped
 
+  raw-archiver:
+    build:
+      context: ./raw_archiver
+      dockerfile: Dockerfile
+    container_name: tapdrink-raw-archiver
+    environment:
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_STREAM=telemetry:events
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-tapdrink}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-tapdrink_minio_secret}
+      - MINIO_BUCKET_BRONZE=${MINIO_BUCKET_BRONZE:-bronze}
+      - BATCH_SIZE=50000
+      - BATCH_TIMEOUT_MS=15000
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - pipeline-net
+    restart: unless-stopped
+
   spark-master:
     image: apache/spark:3.5.1
     container_name: tapdrink-spark-master
@@ -129,6 +153,28 @@ services:
     depends_on:
       spark-master:
         condition: service_healthy
+    networks:
+      - pipeline-net
+    restart: unless-stopped
+
+  spark-submitter:
+    image: apache/spark:3.5.1
+    container_name: tapdrink-spark-submitter
+    user: root
+    environment:
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-tapdrink}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-tapdrink_minio_secret}
+      - SPARK_HADOOP_FS_S3A_ENDPOINT=http://minio:9000
+      - SPARK_HADOOP_FS_S3A_PATH_STYLE_ACCESS=true
+    volumes:
+      - ./spark_streaming:/opt/spark-jobs
+    # Le damos 10 segundos extra para asegurar que el worker se haya registrado en el master
+    command: bash -c "sleep 10 && bash /opt/spark-jobs/submit_job.sh"
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      spark-worker:
+        condition: service_started
     networks:
       - pipeline-net
     restart: unless-stopped
@@ -197,12 +243,27 @@ services:
     restart: unless-stopped
 
 
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: tapdrink-portainer
+    ports:
+      - "9002:9000"
+      - "9443:9443"
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - pipeline-net
+
 volumes:
   redis-data:
     driver: local
   minio-data:
     driver: local
   postgres-data:
+    driver: local
+  portainer_data:
     driver: local
 
 networks:
