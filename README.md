@@ -17,6 +17,61 @@ El proyecto se divide en 7 componentes interconectados, diseñados para correr e
 5.  **Procesamiento de Streaming (Hot Path):** Un clúster de **Apache Spark (PySpark)** estructurado para consumir la cola de Redis, agregar métricas en ventanas de 5 segundos, filtrar el fraude y actualizar los contadores en tiempo real dentro de Redis/PostgreSQL.
 6.  **Almacenamiento Indexado:** **PostgreSQL** configurado con particionamiento lógico para recibir la data procesada en tiempo real y servir como persistencia analítica de negocio.
 7.  **Dashboard Interactivo y Panel de Control (React / Vite):** Una aplicación frontend desarrollada en React que consume métricas agregadas desde la API mediante **Polling de alta frecuencia (Short Polling)** a intervalos de 2 segundos. Renderiza el estado del flujo utilizando **React Flow** y ofrece controles directos (botones de encendido/apagado/estrés) que impactan en el comportamiento del Chaos Simulator a través de peticiones HTTP estándar (`POST`).
+El boton lo quiero hacer con Radix: Switch
+
+### Diagrama de Flujo
+
+```mermaid
+flowchart TD
+    subgraph Client ["Frontend (Control & Observability)"]
+        Dashboard["Dashboard Interactivo (React)"]
+    end
+
+    subgraph DataGen ["Data Generation"]
+        Simulator["Chaos Simulator (Python)"]
+    end
+
+    subgraph Ingest ["Ingestion Layer"]
+        API["Ingest API (FastAPI)"]
+    end
+
+    subgraph Broker ["Message Broker"]
+        Redis[("Redis Streams")]
+    end
+
+    subgraph Processing ["Compute Engine"]
+        Archiver["Raw Archiver (Python)"]
+        Spark["Apache Spark (Streaming)"]
+        Prefect["Prefect (Batch Orchestrator)"]
+    end
+
+    subgraph Storage ["Medallion Data Lake"]
+        Minio[("MinIO (Capa Bronze / Cruda)")]
+        Postgres[("PostgreSQL (Capa Gold / Indexada)")]
+    end
+
+    %% Interacciones de Control
+    Dashboard -- "GET /metrics/live (SSE)" --> API
+    Dashboard -- "POST /control (Toggle switch)" --> API
+    Simulator -. "Consulta Estado" .-> API
+    API -. "Guarda Flag de Estado" .-> Redis
+
+    %% Flujo de Datos
+    Simulator == "Inyecta Tráfico JSON masivo" ==> API
+    API == "XADD (Milisegundos)" ==> Redis
+
+    %% Capa Bronze (ELT)
+    Redis -- "Extrae lotes" --> Archiver
+    Archiver -- "Guarda inmutable (.jsonl)" --> Minio
+
+    %% Hot Path (Streaming)
+    Redis -- "Consume eventos en vivo" --> Spark
+    Spark -- "Calcula métricas y aisla basura" --> Postgres
+
+    %% Cold Path (Batch)
+    Minio -- "Lectura nocturna" --> Prefect
+    Prefect -- "Transforma a Parquet" --> Postgres
+```
 
 ## Conceptos Core Trabajados
 * **Desacoplamiento de Arquitectura:** Uso de Redis como capa de mensajería para separar la ingesta del procesamiento.
@@ -33,7 +88,7 @@ El proyecto se divide en 7 componentes interconectados, diseñados para correr e
 ### Fase 1: Simulación e Ingesta
 - [X] Desarrollar el script generador de telemetría (faker/Python).
 - [X] Levantar contenedor de Redis.
-- [ ] Crear el endpoint de FastAPI que empuja los eventos a la cola de Redis y acepta comandos de control.
+- [X] Crear el endpoint de FastAPI que empuja los eventos a la cola de Redis y acepta comandos de control.
 
 ### Fase 2: Data Lake Crudo (Paradigma ELT)
 - [X] Levantar contenedor de MinIO.

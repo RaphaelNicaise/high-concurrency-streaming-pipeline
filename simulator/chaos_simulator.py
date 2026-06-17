@@ -112,6 +112,10 @@ class Config:
         return f"{self.ingest_api_url.rstrip('/')}/events"
 
     @property
+    def control_endpoint(self) -> str:
+        return f"{self.ingest_api_url.rstrip('/')}/simulator/control"
+
+    @property
     def spike_workers(self) -> int:
         return self.base_workers * self.spike_multiplier
 
@@ -465,11 +469,18 @@ class EventSender:
 # -----------------------------------------------------------------------------
 
 
+class SimulatorState:
+    """Shared state to pause/resume the entire simulator."""
+
+    is_paused: bool = False
+
+
 async def run_user_worker(
     user: SimulatedUser,
     sender: EventSender,
     chaos: ChaosInjector,
     metrics: MetricsCollector,
+    state: SimulatorState,
     stop_event: asyncio.Event,
     think_time_range: tuple[float, float] = (0.05, 0.3),
 ) -> None:
@@ -483,6 +494,10 @@ async def run_user_worker(
       5. Sleep a randomised think-time simulating human pacing
     """
     while not stop_event.is_set():
+        if state.is_paused:
+            await asyncio.sleep(1.0)
+            continue
+
         user.advance()
         payload: dict[str, Any] = user.build_payload()
 
@@ -513,6 +528,7 @@ class TrafficController:
         sender: EventSender,
         chaos: ChaosInjector,
         metrics: MetricsCollector,
+        state: SimulatorState,
         stop_event: asyncio.Event,
         logger: logging.Logger,
     ) -> None:
@@ -520,6 +536,7 @@ class TrafficController:
         self._sender = sender
         self._chaos = chaos
         self._metrics = metrics
+        self._state = state
         self._stop = stop_event
         self._log = logger.getChild("traffic")
         self._tasks: list[asyncio.Task[None]] = []
@@ -537,6 +554,7 @@ class TrafficController:
                     self._sender,
                     self._chaos,
                     self._metrics,
+                    self._state,
                     self._stop,
                     think_range,
                 ),
@@ -645,6 +663,32 @@ async def run_metrics_reporter(
         log.info(metrics.report())
 
 
+async def run_state_poller(
+    session: aiohttp.ClientSession,
+    endpoint: str,
+    state: SimulatorState,
+    stop_event: asyncio.Event,
+    logger: logging.Logger,
+) -> None:
+    """Periodically polls the API to check if the simulator should be PAUSED or RUNNING."""
+    log = logger.getChild("control")
+    while not stop_event.is_set():
+        try:
+            async with session.get(endpoint, timeout=2.0) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    new_paused = data.get("state") == "PAUSED"
+                    if new_paused != state.is_paused:
+                        log.warning(
+                            f"State changed: {'PAUSED' if new_paused else 'RUNNING'}"
+                        )
+                        state.is_paused = new_paused
+        except Exception as e:
+            log.debug(f"Failed to fetch control state: {e}")
+
+        await asyncio.sleep(1.0)
+
+
 # -----------------------------------------------------------------------------
 # Entrypoint
 # -----------------------------------------------------------------------------
@@ -678,6 +722,7 @@ async def main() -> None:
     stop_event = asyncio.Event()
     metrics = MetricsCollector()
     chaos = ChaosInjector(config.chaos_ratio, logger)
+    state = SimulatorState()
 
     # One shared TCP connection pool across ALL workers for efficiency
     connector = aiohttp.TCPConnector(
@@ -699,12 +744,19 @@ async def main() -> None:
             sender=sender,
             chaos=chaos,
             metrics=metrics,
+            state=state,
             stop_event=stop_event,
             logger=logger,
         )
         reporter = asyncio.create_task(
             run_metrics_reporter(metrics, config.report_interval_s, stop_event, logger),
             name="metrics-reporter",
+        )
+        poller = asyncio.create_task(
+            run_state_poller(
+                session, config.control_endpoint, state, stop_event, logger
+            ),
+            name="state-poller",
         )
 
         try:
@@ -715,7 +767,8 @@ async def main() -> None:
             stop_event.set()
             await controller.teardown()
             reporter.cancel()
-            await asyncio.gather(reporter, return_exceptions=True)
+            poller.cancel()
+            await asyncio.gather(reporter, poller, return_exceptions=True)
 
     # Final summary
     logger.info("=" * 68)
