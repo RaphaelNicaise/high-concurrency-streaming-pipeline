@@ -25,7 +25,7 @@ WORKDIR /app
 COPY --from=builder /install /usr/local
 
 # Copy the simulator source
-COPY chaos_simulator.py .
+COPY . .
 
 # Switch to non-root
 USER simulator
